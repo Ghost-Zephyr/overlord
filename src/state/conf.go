@@ -1,16 +1,18 @@
-package overlord
+package state
 
 import (
 	"encoding/json"
 	"flag"
-	"log"
 	"os"
+
+	log "bitsnthings.dev/overlord/src/log"
 )
 
 type Config struct {
 	LibvirtHosts []string
-	PrivateKey   string
+	MongoDbStr   string
 	ConfFilePath string
+	LogLevel     log.LogLevel
 	LogFilePath  string
 }
 
@@ -20,9 +22,11 @@ func (conf *Config) ReadConfig() {
 	flag.Parse()
 	file, err := os.Open(conf.ConfFilePath)
 	if err != nil {
-		log.Printf("Error opening config file! %s", err)
+		log.PrintLog(log.ERROR, "Error opening config file! %s", err)
 	} else {
 		defer file.Close()
 		json.NewDecoder(file).Decode(&conf)
 	}
+	log.CurrentLogLevel = conf.LogLevel
+	log.PrintLog(log.DEBUG, "Log level: %s", log.CurrentLogLevel.String())
 }

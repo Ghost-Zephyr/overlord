@@ -1,15 +1,15 @@
 package main
 
 import (
-	"log"
-
-	overlord "bitsnthings.dev/overlord/src"
+	log "bitsnthings.dev/overlord/src/log"
+	overlord "bitsnthings.dev/overlord/src/state"
 )
 
 func main() {
-	log.Println("Starting Overlord.")
+	log.PrintLog(log.INFO, "Starting Overlord.")
 	state := overlord.NewState()
 	state.Setup()
-	log.Println("Stopping Overlord.")
+	//state.MainLoop()
 	state.Stop()
+	log.PrintLog(log.TRACE, "Done.")
 }
