@@ -43,7 +43,7 @@ const (
 	FATAL
 )
 ```
-Use the corresponding integer starting at 0 for TRACE up to 4 for FATAL.
+Use the corresponding integer starting at 0 for TRACE up to 5 for FATAL.
 
 ### Docker
 Docker compose based development environment in the workings.
