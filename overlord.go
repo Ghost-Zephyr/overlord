@@ -9,7 +9,7 @@ func main() {
 	log.PrintLog(log.INFO, "Starting Overlord.")
 	state := overlord.NewState()
 	state.Setup()
-	//state.MainLoop()
+	state.MainLoop()
 	state.Stop()
 	log.PrintLog(log.TRACE, "Done.")
 }

@@ -5,35 +5,49 @@ import (
 	libvirt "libvirt.org/go/libvirt"
 )
 
+type libvirtConnectFunc func(string) (*libvirt.Connect, error)
+
+type Domains struct {
+	Active   map[string]map[string]libvirt.Domain
+	Inactive map[string]map[string]libvirt.Domain
+}
+
+type Stats struct {
+}
+
 type Libvirt struct {
-	Hosts  map[string]*libvirt.Connect
-	Guests map[string]map[string]libvirt.Domain
+	Hosts   map[string]*libvirt.Connect
+	ROHosts map[string]*libvirt.Connect
+	Domains Domains
 	// Auth   libvirt.ConnectAuth
 	// Flags  libvirt.ConnectFlags
+	Stats Stats
 }
 
 func New() Libvirt {
 	return Libvirt{
 		map[string]*libvirt.Connect{},
-		map[string]map[string]libvirt.Domain{},
+		map[string]*libvirt.Connect{},
+		Domains{},
+		Stats{},
 	}
 }
 
 func (virt *Libvirt) GetStatus() {
-	log.PrintLog(log.TRACE, "Getting libvirt cluster status.")
 	virt.getAllDomains()
-	log.PrintLog(log.INFO, "All domains in the cluster:")
-	for uri, doms := range virt.Guests {
-		log.PrintLog(log.INFO, "With uri: %s", uri)
-		for name, dom := range doms {
-			os, _ := dom.GetOSType()
-			log.PrintLog(log.INFO, "%s (%s)", name, os)
-		}
+	log.PrintLog(log.TRACE, "Fetched libvirt cluster status.")
+}
+
+func (virt *Libvirt) IsReadOnly(uri string) bool {
+	if _, ok := virt.ROHosts[uri]; ok {
+		return true
+	} else {
+		return false
 	}
 }
 
-func (virt *Libvirt) Connect(cstr string) (*libvirt.Connect, error) {
-	conn, err := libvirt.NewConnect(cstr) //, &virt.Auth, virt.Flags)
+func (virt *Libvirt) Connect(cstr string, connFn libvirtConnectFunc) (*libvirt.Connect, error) {
+	conn, err := connFn(cstr) //, &virt.Auth, virt.Flags)
 	if err != nil {
 		log.PrintLog(log.WARN, "Error connecting to libvirt host with uri: \"%s\"! %s",
 			cstr, err)
@@ -43,8 +57,8 @@ func (virt *Libvirt) Connect(cstr string) (*libvirt.Connect, error) {
 	return conn, err
 }
 
-func (virt *Libvirt) ConnectMany(cstrs []string) {
+func (virt *Libvirt) ConnectMany(cstrs []string, connFn libvirtConnectFunc) {
 	for _, cstr := range cstrs {
-		virt.Connect(cstr)
+		virt.Connect(cstr, connFn)
 	}
 }

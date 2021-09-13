@@ -1,4 +1,4 @@
-package state
+package conf
 
 import (
 	"encoding/json"
@@ -6,14 +6,28 @@ import (
 	"os"
 
 	log "bitsnthings.dev/overlord/src/log"
+	"maunium.net/go/mautrix"
 )
 
 type Config struct {
-	LibvirtHosts []string
-	MongoDbStr   string
-	ConfFilePath string
-	LogLevel     log.LogLevel
-	LogFilePath  string
+	LibvirtHosts         []string
+	LibvirtReadOnlyHosts []string
+	MongoDbStr           string
+	MongoDbName          string
+	ConfFilePath         string
+	LogLevel             log.LogLevel
+	LogFilePath          string
+	EnableMatrix         bool
+	MatrixCreds          MatrixCreds
+	MatrixCleint         mautrix.Client
+}
+
+type MatrixCreds struct {
+	Homeserver string
+	// AccessToken string
+	// UserID      mautrix.UserIdentifier
+	Username string
+	Password string
 }
 
 func (conf *Config) ReadConfig() {

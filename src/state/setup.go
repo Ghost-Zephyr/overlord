@@ -9,8 +9,10 @@ import (
 	"syscall"
 
 	log "bitsnthings.dev/overlord/src/log"
+	matrix "bitsnthings.dev/overlord/src/matrix"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"libvirt.org/go/libvirt"
 )
 
 func (state *State) Setup() {
@@ -21,13 +23,25 @@ func (state *State) Setup() {
 	log.PrintLog(log.TRACE, "Config and logfile ready.")
 	state.setupDB()
 	log.PrintLog(log.TRACE, "Connected to database.")
-	state.Libvirt.ConnectMany(state.Config.LibvirtHosts)
+	state.Libvirt.ConnectMany(state.Config.LibvirtHosts, libvirt.NewConnect)
+	state.Libvirt.ConnectMany(state.Config.LibvirtReadOnlyHosts, libvirt.NewConnectReadOnly)
 	log.PrintLog(log.TRACE, "Done with inital connections.")
+	state.fetchDBState()
+	log.PrintLog(log.TRACE, "Loaded state from DB.")
 	state.Libvirt.GetStatus()
-	log.PrintLog(log.TRACE, "Fetched cluster status and prepared internal state.")
+	log.PrintLog(log.TRACE, "Fetched cluster status and updated internal state.")
+	state.pushDBState()
+	log.PrintLog(log.TRACE, "Pushed updated state to DB.")
+	if state.Config.EnableMatrix {
+		matrix.Setup(state.Config)
+		log.PrintLog(log.INFO, "Connected to matrix.")
+	}
 }
 
 func (state *State) setupDB() {
+	state.upsertOpts.SetUpsert(true)
+	state.streamOpts.SetBatchSize(8)
+	state.streamOpts.SetFullDocument("updateLookup")
 	clientOptions := options.Client().ApplyURI(state.Config.MongoDbStr)
 	client, _ := mongo.Connect(context.TODO(), clientOptions)
 	err := client.Ping(context.TODO(), nil)
@@ -37,7 +51,12 @@ func (state *State) setupDB() {
 		log.PrintLog(log.FATAL, "Error connecting to database wtih connection string \"%s\"! %s",
 			state.Config.MongoDbStr, err)
 	}
-	state.Mongo = client
+	dbName := state.Config.MongoDbName
+	if dbName == "" {
+		dbName = "overlord"
+	}
+	state.MongoDB = client.Database(dbName)
+	state.setDBWatchers()
 }
 
 func (state *State) setupCloseSignalHandlers() {

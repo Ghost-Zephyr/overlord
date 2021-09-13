@@ -13,11 +13,21 @@ Everything is optional!
 ```json
 {
   "LibVirtHosts": [
-    "qemu:///system"
+    "qemu:///system",
+    "qemu+ssh://userwithlibvirtgroup@othernode/system"
+  ],
+  "LibVirtReadOnlyHosts": [
+    "qemu+ssh://user@privatenode/system"
   ],
   "MongoDbStr": "mongodb://localhost:27017",
+  "MongoDbName": "overlord",
   "LogLevel": 0,
-  "LogFilePath": "lord.log"
+  "LogFilePath": "lord.log",
+  "MatrixCreds": {
+    "Homeserver": "https://matrix.org",
+    "Username": "@changme:matrix.org",
+    "Password": "yourpassword!"
+  }
 }
 ```
 No log file means stdout only!
