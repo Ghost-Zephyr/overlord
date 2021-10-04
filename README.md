@@ -19,10 +19,14 @@ Everything is optional!
   "LibVirtReadOnlyHosts": [
     "qemu+ssh://user@privatenode/system"
   ],
-  "MongoDbStr": "mongodb://localhost:27017",
+  "MongoDbUri": "mongodb://localhost:27017",
   "MongoDbName": "overlord",
+  "InMemoryDB": false,
   "LogLevel": 0,
   "LogFilePath": "lord.log",
+  "EnableAPI": true,
+  "APIBindAddress": "127.0.0.1:8080",
+  "EnableMatrix": false,
   "MatrixCreds": {
     "Homeserver": "https://matrix.org",
     "Username": "@changme:matrix.org",

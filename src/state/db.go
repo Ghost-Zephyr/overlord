@@ -11,9 +11,44 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+func (state *State) setupDB() {
+	state.upsertOpts.SetUpsert(true)
+	state.streamOpts.SetBatchSize(8)
+	state.streamOpts.SetFullDocument("updateLookup")
+	if state.Config.MongoDbUri == "" {
+		log.PrintLog(log.INFO, "No MongoDB uri in config, using in memory database!")
+	}
+	if state.Config.InMemoryDB {
+		log.PrintLog(log.INFO, "InMemoryDB set in config, using in memory database!")
+	}
+	if state.Config.MongoDbUri == "" || state.Config.InMemoryDB {
+		log.PrintLog(log.WARN, "MongoDB collection watchers is not supported with in memory database!")
+		state.Config.InMemoryDB = true
+		state.Config.MongoDbUri = ""
+		state.DB.domains = &mongo.Collection{}
+		return
+	}
+	clientOptions := options.Client().ApplyURI(state.Config.MongoDbUri)
+	client, _ := mongo.Connect(context.TODO(), clientOptions)
+	err := client.Ping(context.TODO(), nil)
+	// No idea why, but error only gets returned with ping, not connect,
+	// if the server refuses the connection.
+	if err != nil {
+		log.PrintLog(log.FATAL, "Error connecting to database wtih connection string \"%s\"! %s",
+			state.Config.MongoDbUri, err)
+	}
+	dbName := state.Config.MongoDbName
+	if dbName == "" {
+		dbName = "overlord"
+	}
+	db := client.Database(dbName)
+	state.DB.domains = db.Collection("domains")
+	state.setDBWatchers()
+}
+
 func (state *State) setDBWatchers() {
 	state.startWatchStreamHandler(
-		*state.MongoDB.Collection("domains"),
+		*state.DB.domains,
 		mongo.Pipeline{},
 		state.Libvirt.DomainChangeHandler)
 }
@@ -39,10 +74,6 @@ func (state *State) startWatchStreamHandler(
 	go handler(stream)
 }
 
-func (state *State) fetchDBState() {
-
-}
-
 func (state *State) pushDBState() {
 	for uri, domMap := range state.Libvirt.Domains.Active {
 		setDomainStatesInDB(
@@ -61,19 +92,15 @@ func setDomainStatesInDB(
 	uri string,
 	opts *options.UpdateOptions,
 ) {
-	var flags libvirt.DomainXMLFlags
-	if !state.Libvirt.IsReadOnly(uri) {
-		flags = libvirt.DOMAIN_XML_INACTIVE + libvirt.DOMAIN_XML_INACTIVE
-	}
 	for uuid, dom := range domMap {
-		xml, err := dom.GetXMLDesc(flags)
+		xml, err := dom.GetXMLDesc(state.Libvirt.GetXMLFlags(uri))
 		if err != nil {
 			log.PrintLog(
 				log.ERROR,
 				"Error getting XML of domain with uuid: \"%s\" on node with uri: \"%s\"! %s",
 				uuid, uri, err)
 		}
-		state.MongoDB.Collection("domains").UpdateOne(
+		state.DB.domains.UpdateOne(
 			context.TODO(),
 			bson.D{
 				{Key: "uri", Value: uri},

@@ -8,58 +8,68 @@ import (
 	"os/signal"
 	"syscall"
 
+	virt "bitsnthings.dev/overlord/src/libvirt"
 	log "bitsnthings.dev/overlord/src/log"
-	matrix "bitsnthings.dev/overlord/src/matrix"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"bitsnthings.dev/overlord/src/matrix"
+	"github.com/savsgio/atreugo/v11"
+	"go.mongodb.org/mongo-driver/bson"
 	"libvirt.org/go/libvirt"
 )
 
 func (state *State) Setup() {
 	log.PrintLog(log.TRACE, "Staring setup.")
-	state.setupCloseSignalHandlers()
+	state.setupSignalHandlers()
 	state.Config.ReadConfig()
 	state.setLogOutput()
 	log.PrintLog(log.TRACE, "Config and logfile ready.")
 	state.setupDB()
-	log.PrintLog(log.TRACE, "Connected to database.")
+	log.PrintLog(log.INFO, "Connected to database.")
 	state.Libvirt.ConnectMany(state.Config.LibvirtHosts, libvirt.NewConnect)
-	state.Libvirt.ConnectMany(state.Config.LibvirtReadOnlyHosts, libvirt.NewConnectReadOnly)
-	log.PrintLog(log.TRACE, "Done with inital connections.")
-	state.fetchDBState()
-	log.PrintLog(log.TRACE, "Loaded state from DB.")
-	state.Libvirt.GetStatus()
+	state.Libvirt.ConnectMany(state.Config.LibvirtROHosts, libvirt.NewConnectReadOnly)
+	log.PrintLog(log.INFO, "Done with inital libvirt connections.")
+	state.Libvirt.GetAllDomains()
 	log.PrintLog(log.TRACE, "Fetched cluster status and updated internal state.")
+	state.updateDomains()
+	log.PrintLog(log.TRACE, "Updated cluster state.")
 	state.pushDBState()
 	log.PrintLog(log.TRACE, "Pushed updated state to DB.")
+	if state.Config.EnableAPI {
+		state.API.Setup(&atreugo.Config{
+			Addr: state.Config.APIBindAddress,
+		})
+		log.PrintLog(log.INFO, "Configured the HTTP API thread.")
+	}
 	if state.Config.EnableMatrix {
 		matrix.Setup(state.Config)
 		log.PrintLog(log.INFO, "Connected to matrix.")
 	}
 }
 
-func (state *State) setupDB() {
-	state.upsertOpts.SetUpsert(true)
-	state.streamOpts.SetBatchSize(8)
-	state.streamOpts.SetFullDocument("updateLookup")
-	clientOptions := options.Client().ApplyURI(state.Config.MongoDbStr)
-	client, _ := mongo.Connect(context.TODO(), clientOptions)
-	err := client.Ping(context.TODO(), nil)
-	// No idea why, but error only gets returned with ping, not connect
-	// if the server refuses the connection.
+func (state *State) updateDomains() {
+	var doms []virt.DomainDocument
+	cur, err := state.DB.domains.Find(context.TODO(), bson.D{})
 	if err != nil {
-		log.PrintLog(log.FATAL, "Error connecting to database wtih connection string \"%s\"! %s",
-			state.Config.MongoDbStr, err)
+		log.PrintLog(log.ERROR, "Error tying to get all domains from database. ", err)
+		return
 	}
-	dbName := state.Config.MongoDbName
-	if dbName == "" {
-		dbName = "overlord"
+	err = cur.All(context.TODO(), &doms)
+	if err != nil {
+		log.PrintLog(log.ERROR, "Error decoding all domains after running the query. ", err)
 	}
-	state.MongoDB = client.Database(dbName)
-	state.setDBWatchers()
+	for i := range doms {
+		dom := doms[i]
+		domain, active, err := state.Libvirt.GetDomainAndStatus(dom.URI, dom.UUID)
+		if err == nil {
+			if active {
+				state.SetDomainState(libvirt.DOMAIN_RUNNING, domain)
+			} else {
+				state.SetDomainState(libvirt.DOMAIN_SHUTDOWN, domain)
+			}
+		}
+	}
 }
 
-func (state *State) setupCloseSignalHandlers() {
+func (state *State) setupSignalHandlers() {
 	s := make(chan os.Signal)
 	signal.Notify(s, os.Interrupt, syscall.SIGTERM)
 	signal.Notify(s, os.Interrupt, syscall.SIGINT)
